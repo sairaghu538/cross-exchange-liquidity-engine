@@ -4,13 +4,16 @@ and routes them to the OrderBook engine.
 
 Handles snapshot initialization, incremental updates, sequence
 number tracking, and connection status changes.
+Supports periodic history recording for trend analysis.
 """
 
 import asyncio
 import logging
+import time
 from typing import Optional, Callable
 
 from src.engine.order_book import OrderBook
+from src.engine.history_manager import HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +23,30 @@ async def process_events(
     order_books: dict[str, OrderBook],  # exchange -> OrderBook
     on_status_change: Optional[Callable[[str, str], None]] = None,  # (status, exchange)
     shutdown_event: Optional[asyncio.Event] = None,
+    history_manager: Optional[HistoryManager] = None,
 ) -> None:
     """
     Continuously consume events from the queue and apply them
     to the appropriate order book.
     """
+    last_record_time = 0
+    record_interval = 1.0  # Record history every 1 second
+
     while True:
         if shutdown_event and shutdown_event.is_set():
             logger.info("Shutdown event received, stopping processor.")
             break
 
         try:
+            # Wait for next event with short timeout to allow for periodic history recording
             try:
-                event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                event = await asyncio.wait_for(queue.get(), timeout=0.1)
             except asyncio.TimeoutError:
+                # Periodic recording even if no events arriving
+                if history_manager:
+                    last_record_time = _maybe_record_history(
+                        order_books, history_manager, last_record_time, record_interval
+                    )
                 continue
 
             event_type = event.get("type", "")
@@ -57,10 +70,38 @@ async def process_events(
             elif event_type == "binance_partial":
                 _handle_binance_partial(event, order_book)
 
+            # Check if it's time to record state to DB after an event
+            if history_manager:
+                last_record_time = _maybe_record_history(
+                    order_books, history_manager, last_record_time, record_interval
+                )
+
             queue.task_done()
 
         except Exception as e:
             logger.error(f"Error processing event: {e}", exc_info=True)
+
+
+def _maybe_record_history(order_books, history_manager, last_time, interval):
+    """Throttled recording of best prices to SQLite."""
+    current_time = time.time()
+    if current_time - last_time < interval:
+        return last_time
+
+    cb = order_books.get("coinbase")
+    bn = order_books.get("binance")
+
+    if cb and bn and cb.is_initialized and bn.is_initialized:
+        history_manager.record_gap(
+            product_id=cb.product_id,
+            cb_bid=cb.get_best_bid() or 0,
+            cb_ask=cb.get_best_ask() or 0,
+            bn_bid=bn.get_best_bid() or 0,
+            bn_ask=bn.get_best_ask() or 0
+        )
+        return current_time
+    
+    return last_time
 
 
 def _handle_snapshot(event: dict, order_book: OrderBook) -> None:
@@ -110,6 +151,4 @@ def _handle_binance_partial(event: dict, order_book: OrderBook) -> None:
     asks = event.get("asks", [])
     
     order_book.apply_binance_partial(bids, asks)
-    # Binance partial events don't usually need sequence tracking in the same way 
-    # as Coinbase since each message is a full reset of the top levels.
     order_book.sequence_num = event.get("last_update_id", 0)

@@ -18,6 +18,7 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 from src.engine.order_book import OrderBook
+from src.engine.history_manager import HistoryManager
 from src.feed.coinbase_feed import connect_and_stream
 from src.feed.binance_feed import connect_and_stream_binance
 from src.processor.event_processor import process_events
@@ -262,6 +263,7 @@ def _run_async_engine(
     status_holder: dict,
     product_id: str,
     shutdown_event: threading.Event,
+    history_manager: HistoryManager,
 ):
     """Run multi-exchange feeds and processor."""
     loop = asyncio.new_event_loop()
@@ -293,7 +295,7 @@ def _run_async_engine(
         
         # Unified Processor
         proc_task = asyncio.create_task(
-            process_events(queue, order_books, on_status_change, async_shutdown)
+            process_events(queue, order_books, on_status_change, async_shutdown, history_manager)
         )
 
         await watcher
@@ -330,9 +332,12 @@ def start_engine(product_id: str):
     st.session_state["product_id"] = product_id
     st.session_state["shutdown_event"] = shutdown_event
 
+    history_manager = HistoryManager()
+    st.session_state["history_manager"] = history_manager
+
     thread = threading.Thread(
         target=_run_async_engine,
-        args=({"coinbase": cb_book, "binance": bn_book}, status_holder, product_id, shutdown_event),
+        args=({"coinbase": cb_book, "binance": bn_book}, status_holder, product_id, shutdown_event, history_manager),
         daemon=True,
     )
     thread.start()
@@ -399,11 +404,16 @@ def main():
         st.markdown('<div class="exchange-label label-binance">Binance</div>', unsafe_allow_html=True)
         st.markdown(render_status_badge(status.get("binance", "connecting")), unsafe_allow_html=True)
 
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-title">🚨 Alert Settings</div>', unsafe_allow_html=True)
+        alert_threshold = st.number_input("Gap Threshold ($)", min_value=0.0, value=5.0, step=0.5)
+        st.caption("Highlight dashboard when Arbitrage Gap exceeds this value.")
+
     start_engine(product_id)
     cb_book = st.session_state.get("cb_book")
     bn_book = st.session_state.get("bn_book")
 
-    st.markdown(f'<div class="hero-header"><div class="hero-title">📊 Liquidity Engine Level 2</div><div style="color:#64748b; font-weight:700; font-family:JetBrains Mono">{product_id} Multi-Exchange Comparison</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="hero-header"><div class="hero-title">📊 Liquidity Engine Level 3</div><div style="color:#64748b; font-weight:700; font-family:JetBrains Mono">{product_id} Analytics & Alerts</div></div>', unsafe_allow_html=True)
 
     if not cb_book or not bn_book or not (cb_book.is_initialized or bn_book.is_initialized):
         st.warning("Synchronizing feeds...")
@@ -433,7 +443,18 @@ def main():
             st.markdown(f'<div class="metric-card"><div class="metric-label">Unified Spread</div><div class="metric-value">${spread:,.2f}</div></div>', unsafe_allow_html=True)
         with m4:
             arb = best_bn_bid - best_cb_ask # Buy CB, Sell BN
-            st.markdown(f'<div class="metric-card"><div class="metric-label">Arbitrage Gap</div><div class="metric-value {"arb-positive" if arb > 0 else ""}">${arb:,.2f}</div></div>', unsafe_allow_html=True)
+            alert_class = "arb-positive" if arb >= alert_threshold else ""
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Arbitrage Gap</div><div class="metric-value {alert_class}">${arb:,.2f}</div></div>', unsafe_allow_html=True)
+
+        # ARBITRAGE HISTORY CHART
+        history_mgr = st.session_state.get("history_manager")
+        if history_mgr:
+            hist_data = history_mgr.get_recent_history(product_id, limit=50)
+            if hist_data:
+                st.markdown('<div class="book-title" style="margin-top:1rem">📈 Arbitrage Gap Trend (Last 50 points)</div>', unsafe_allow_html=True)
+                # Ensure values are float
+                chart_values = [float(d['arb_gap']) for d in hist_data]
+                st.line_chart(chart_values)
 
         # Comparative Books
         c1, c2 = st.columns(2)

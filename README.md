@@ -1,39 +1,60 @@
 # Cross-Exchange Liquidity Engine
 
-Real-time order book reconstruction and cross-exchange liquidity analytics engine using Coinbase and Binance WebSocket feeds. Built with asyncio, stateful event processing, and Streamlit visualization.
+A high-performance, real-time cryptocurrency order book engine that aggregates liquidity from **Coinbase** and **Binance**. Built with Python, `asyncio`, and `websockets` for sub-100ms data ingestion.
 
-## 📸 Dashboard Preview
+## 🚀 Level 3 — Analytics & Alerts (Current)
 
-### Order Book Metrics & Top Levels
-![Dashboard Top](assets/dashboard_top.png)
+The engine has graduated to include deep history, trend visualization, and real-time arbitrage alerting.
 
-### Full Depth View & Statistics
-![Dashboard Bottom](assets/dashboard_bottom.png)
+### Dashboard Overview (Level 3)
+![Level 3 Analytics Top](assets/level3_analytics_top.png)
+*Real-time Arbitrage Trend Charting & Alert Settings*
 
-## Level 2 — Multi-Exchange Comparison (Current)
+![Level 3 Analytics Bottom](assets/level3_analytics_bottom.png)
+*Dual-Exchange Order Book Depth & Market Metrics*
 
-The engine now streams real-time data from both **Coinbase** and **Binance** simultaneously to provide a unified view of market liquidity.
+### Key Features
 
-### New Features
-
-- **Binance Integration** — Seamless connection to Binance Spot WebSocket API.
-- **Global Best Price** — Aggregated best bid and best ask across both exchanges.
-- **Arbitrage Tracking** — Automatic calculation of price gaps between exchanges.
-- **Side-by-Side Visualization** — Compare depth and spread across platforms in real-time.
+- **Multi-Exchange Sync** — Simultaneous streaming from Coinbase Advanced Trade and Binance (Global/US fallback).
+- **Arbitrage Trend Charting** — Live visual tracking of price gaps across the last 50 data points.
+- **SQLite Persistence** — High-frequency logging (WAL-mode) of market conditions for historical analysis.
+- **Smart Alerts** — User-defined thresholds with visual highlighting for one-click opportunity detection.
+- **Global Best Price** — Aggregated best bid/ask and unified spread calculation.
 - **Automatic Symbol Mapping** — Handles exchange-specific naming conventions (e.g., BTC-USD vs btcusdt).
 
-### Architecture (Level 2)
+---
 
-```
-[Coinbase feed]  [Binance feed]
-       \            /
-     [asyncio.Queue]
-            |
-    [Event Processor]
-       /            \
-[Coinbase Book]  [Binance Book]
-       \            /
-    [Comparative UI]
+## 📊 Level 2 — Multi-Exchange Comparison
+
+![Level 2 Comparison](assets/level2_comparison.png)
+*Direct side-by-side comparison of exchange liquidity and spreads.*
+
+### Architecture
+
+```mermaid
+graph TD
+    subgraph Feeds
+        CB[Coinbase WebSocket]
+        BN[Binance WebSocket]
+    end
+    
+    Queue[Async Queue]
+    Proc[Multi-Exchange Event Processor]
+    DB[(SQLite History)]
+    
+    subgraph Engine
+        CBBook[Coinbase Book]
+        BNBook[Binance Book]
+    end
+    
+    UI[Streamlit Dashboard]
+    
+    Feeds --> Queue
+    Queue --> Proc
+    Proc --> Engine
+    Proc --> DB
+    Engine --> UI
+    DB --> UI
 ```
 
 ### Quick Start
@@ -54,23 +75,20 @@ pytest tests/ -v
 ```
 ├── app.py                      # Streamlit entry point (sidebar + dashboard)
 ├── requirements.txt            # Dependencies
-├── assets/                     # Screenshots
+├── data/                       # SQLite History DB
+├── assets/                     # Screenshots & Images
 ├── src/
 │   ├── engine/
-│   │   └── order_book.py       # Thread-safe OrderBook class
+│   │   ├── order_book.py       # Thread-safe OrderBook class
+│   │   └── history_manager.py  # SQLite Persistence Manager
 │   ├── feed/
-│   │   └── coinbase_feed.py    # WebSocket listener (10MB max_size)
+│   │   ├── coinbase_feed.py    # Coinbase WebSocket listener
+│   │   └── binance_feed.py     # Binance WebSocket listener (Global/US)
 │   └── processor/
-│       └── event_processor.py  # Async queue consumer
+│       └── event_processor.py  # Async event routing & throttling
 └── tests/
-    └── test_order_book.py      # Unit tests (22 tests)
+    └── test_order_book.py      # Unit tests
 ```
-
-### Roadmap
-
-- **Level 2** — Add Binance depth stream, compare liquidity across exchanges
-- **Level 3** — Cross-exchange spread, arbitrage detection, liquidity imbalance metrics
-- **Level 4** — Background worker + DB + separated Streamlit dashboard (Render + Streamlit Cloud)
 
 ### Tech Stack
 
@@ -78,6 +96,7 @@ pytest tests/ -v
 |-----------|-----------|
 | Language | Python 3.10+ |
 | WebSocket | `websockets` library |
+| Database | SQLite (WAL-Mode) |
 | State Engine | Thread-safe Python (dict + Lock) |
 | Queue | `asyncio.Queue` (in-process) |
 | Dashboard | Streamlit + custom HTML/CSS |
@@ -85,4 +104,4 @@ pytest tests/ -v
 
 ### No API Key Required
 
-The Coinbase Advanced Trade WebSocket market data endpoint (`wss://advanced-trade-ws.coinbase.com`) supports unauthenticated subscriptions for the `level2` channel. No API key or account needed.
+The Coinbase and Binance Public WebSocket endpoints support unauthenticated subscriptions for market data. No API key or account needed.
