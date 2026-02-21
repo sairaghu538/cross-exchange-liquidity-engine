@@ -9,7 +9,8 @@ The engine has graduated to a professional-grade trading terminal with execution
 ### Dashboard Overview (Level 4)
 
 #### Premium Dark Mode
-![Level 4 Dashboard](assets/level4_dashboard.png)
+<img width="1910" height="859" alt="image" src="https://github.com/user-attachments/assets/4e82a913-cefa-4c77-a179-50d5cf379db6" />
+
 *VWAP Analysis, Liquidity Imbalance, and Real-time Alerts*
 
 #### Clean Light Mode
