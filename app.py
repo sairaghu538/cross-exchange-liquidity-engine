@@ -71,187 +71,212 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------------------------
-# Custom CSS — Premium Dark Theme
+# Custom Styling (Level 4 Theme-Aware)
 # ---------------------------------------------------------------------------
-st.markdown("""
-<style>
-    /* ── Import Google Font ── */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+def inject_custom_css(theme_mode: str):
+    if theme_mode == "Dark":
+        colors = {
+            "bg_main": "linear-gradient(135deg, #0a0e1a 0%, #0d1321 40%, #111827 100%)",
+            "sidebar_bg": "rgba(10, 14, 26, 0.95)",
+            "card_bg": "rgba(15, 23, 42, 0.6)",
+            "card_border": "rgba(99, 102, 241, 0.15)",
+            "text_primary": "#e2e8f0",
+            "text_secondary": "#94a3b8",
+            "book_bg": "rgba(15, 23, 42, 0.4)",
+            "row_border": "rgba(255,255,255,0.02)",
+            "accent": "#f472b6"
+        }
+    else:
+        colors = {
+            "bg_main": "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            "sidebar_bg": "rgba(255, 255, 255, 0.95)",
+            "card_bg": "rgba(255, 255, 255, 0.8)",
+            "card_border": "rgba(99, 102, 241, 0.1)",
+            "text_primary": "#1e293b",
+            "text_secondary": "#64748b",
+            "book_bg": "rgba(255, 255, 255, 0.6)",
+            "row_border": "rgba(0,0,0,0.05)",
+            "accent": "#ec4899"
+        }
 
-    /* ── Global ── */
-    .stApp {
-        background: linear-gradient(135deg, #0a0e1a 0%, #0d1321 40%, #111827 100%);
-        font-family: 'Inter', sans-serif;
-    }
+    st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    /* ── Sidebar ── */
-    section[data-testid="stSidebar"] {
-        background: rgba(10, 14, 26, 0.95) !important;
-        border-right: 1px solid rgba(99, 102, 241, 0.15);
-    }
-    section[data-testid="stSidebar"] .stSelectbox label {
-        color: #94a3b8 !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        font-size: 0.75rem !important;
-    }
-    .sidebar-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #60a5fa, #a78bfa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
-        letter-spacing: 0.5px;
-    }
-    .sidebar-divider {
-        border-top: 1px solid rgba(99, 102, 241, 0.15);
-        margin: 1rem 0;
-    }
+        :root {{
+            --bg-main: {colors['bg_main']};
+            --sidebar-bg: {colors['sidebar_bg']};
+            --card-bg: {colors['card_bg']};
+            --card-border: {colors['card_border']};
+            --text-primary: {colors['text_primary']};
+            --text-secondary: {colors['text_secondary']};
+            --book-bg: {colors['book_bg']};
+            --row-border: {colors['row_border']};
+            --accent: {colors['accent']};
+        }}
 
-    /* ── Hero Header ── */
-    .hero-header {
-        text-align: center;
-        padding: 1rem 0 0.5rem 0;
-    }
-    .hero-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #60a5fa, #f472b6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -1px;
-        margin-bottom: 0.2rem;
-    }
+        .stApp {{
+            background: var(--bg-main);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+        }}
 
-    /* ── Exchange Labels ── */
-    .exchange-label {
-        font-size: 0.65rem;
-        font-weight: 700;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        padding: 2px 8px;
-        border-radius: 4px;
-        margin-bottom: 8px;
-        display: inline-block;
-    }
-    .label-coinbase { background: #1652f0; color: white; }
-    .label-binance { background: #f3ba2f; color: black; }
+        section[data-testid="stSidebar"] {{
+            background: var(--sidebar-bg) !important;
+            border-right: 1px solid var(--card-border);
+        }}
+        
+        .hero-header {{
+            text-align: center;
+            padding: 1.5rem 0 1rem 0;
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            border-radius: 16px;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }}
+        .hero-title {{
+            font-size: 2.4rem;
+            font-weight: 800;
+            color: white;
+            letter-spacing: -1px;
+            margin: 0;
+        }}
 
-    /* ── Status Badge ── */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 12px;
-        border-radius: 50px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    .status-connected { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-    .status-disconnected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-    
-    .status-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        animation: pulse 2s infinite;
-    }
-    .dot-green { background: #10b981; }
-    .dot-red { background: #ef4444; }
+        .metric-card {{
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1rem;
+            backdrop-filter: blur(10px);
+            margin-bottom: 10px;
+        }}
+        .metric-label {{
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }}
+        .metric-value {{
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-primary);
+        }}
+        .metric-accent {{ color: var(--accent); }}
 
-    @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.5; transform: scale(0.8); }
-    }
+        .book-container {{
+            background: var(--book-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 0.8rem;
+            backdrop-filter: blur(5px);
+        }}
+        
+        .sidebar-title {{
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }}
+        
+        .sidebar-divider {{
+            border-top: 1px solid var(--card-border);
+            margin: 1rem 0;
+        }}
 
-    /* ── Metric Cards ── */
-    .metric-card {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(99, 102, 241, 0.15);
-        border-radius: 12px;
-        padding: 1rem;
-        backdrop-filter: blur(10px);
-        margin-bottom: 10px;
-    }
-    .metric-label {
-        font-size: 0.7rem;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 600;
-        margin-bottom: 4px;
-    }
-    .metric-value {
-        font-size: 1.4rem;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
-        color: #e2e8f0;
-    }
-    .metric-value-tiny { font-size: 1.1rem; }
-    .metric-best { color: #f472b6; border-color: #f472b6; }
+        /* ── Exchange Labels ── */
+        .exchange-label {{
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }}
+        .label-coinbase {{ background: #1652f0; color: white; }}
+        .label-binance {{ background: #f3ba2f; color: black; }}
 
-    /* ── Order Book Table ── */
-    .book-container {
-        background: rgba(15, 23, 42, 0.4);
-        border: 1px solid rgba(99, 102, 241, 0.1);
-        border-radius: 12px;
-        padding: 0.8rem;
-        backdrop-filter: blur(5px);
-    }
-    .book-title {
-        font-size: 0.85rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        margin-bottom: 0.5rem;
-    }
-    .book-title-bid { color: #10b981; }
-    .book-title-ask { color: #ef4444; }
+        /* ── Status Badge ── */
+        .status-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        .status-connected {{ background: rgba(16, 185, 129, 0.15); color: #10b981; }}
+        .status-disconnected {{ background: rgba(239, 68, 68, 0.15); color: #ef4444; }}
+        
+        .status-dot {{
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }}
+        .dot-green {{ background: #10b981; }}
+        .dot-red {{ background: #ef4444; }}
 
-    table.book-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    table.book-table th {
-        font-size: 0.65rem;
-        color: #475569;
-        text-align: right;
-        padding: 4px 8px;
-    }
-    table.book-table th:first-child { text-align: left; }
-    table.book-table td {
-        padding: 4px 8px;
-        font-size: 0.8rem;
-        text-align: right;
-        border-bottom: 1px solid rgba(255,255,255,0.02);
-    }
-    table.book-table td:first-child { text-align: left; }
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; transform: scale(1); }}
+            50% {{ opacity: 0.5; transform: scale(0.8); }}
+        }}
 
-    /* Bid/Ask highlighting */
-    .bid-row td { color: #10b981; }
-    .ask-row td { color: #ef4444; }
-    
-    .depth-bar {
-        height: 2px;
-        border-radius: 1px;
-        margin-top: 2px;
-    }
-    .depth-bar-bid { background: #10b981; opacity: 0.3; }
-    .depth-bar-ask { background: #ef4444; opacity: 0.3; }
+        .book-title {{
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }}
+        .book-title-bid {{ color: #10b981; }}
+        .book-title-ask {{ color: #ef4444; }}
 
-    /* Comparisons */
-    .arb-positive { background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; color: #10b981; }
-    .arb-negative { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #ef4444; }
+        table.book-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        table.book-table th {{
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-align: right;
+            padding: 4px 8px;
+        }}
+        table.book-table th:first-child {{ text-align: left; }}
+        table.book-table td {{
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            text-align: right;
+            border-bottom: 1px solid var(--row-border);
+            color: var(--text-primary);
+        }}
+        table.book-table td:first-child {{ text-align: left; }}
 
-    #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
-</style>
-""", unsafe_allow_html=True)
+        .bid-row td {{ color: #10b981; }}
+        .ask-row td {{ color: #ef4444; }}
+        
+        .depth-bar {{
+            height: 2px;
+            border-radius: 1px;
+            margin-top: 2px;
+        }}
+        .depth-bar-bid {{ background: #10b981; opacity: 0.3; }}
+        .depth-bar-ask {{ background: #ef4444; opacity: 0.3; }}
+
+        .arb-positive {{ background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; color: #10b981; }}
+        .arb-negative {{ background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #ef4444; }}
+
+        #MainMenu {{ visibility: hidden; }}
+        footer {{ visibility: hidden; }}
+    </style>
+    """, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -390,30 +415,35 @@ def main():
     st_autorefresh(interval=1500, key="refresh")
 
     with st.sidebar:
-        st.markdown('<div class="sidebar-title">⚙️ Control Panel</div>', unsafe_allow_html=True)
-        product_id = st.selectbox("Market Asset", options=CRYPTO_PAIRS)
-        view_mode = st.radio("Display Mode", options=["Comparison", "Coinbase Only", "Binance Only"])
-        
-        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-        status = st.session_state.get("status", {})
-        
-        st.markdown('<div class="exchange-label label-coinbase">Coinbase</div>', unsafe_allow_html=True)
-        st.markdown(render_status_badge(status.get("coinbase", "connecting")), unsafe_allow_html=True)
-        
-        st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="exchange-label label-binance">Binance</div>', unsafe_allow_html=True)
-        st.markdown(render_status_badge(status.get("binance", "connecting")), unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-title">🌗 Display Theme</div>', unsafe_allow_html=True)
+        theme_mode = st.radio("UI Mode", ["Dark", "Light"], horizontal=True, label_visibility="collapsed")
+        inject_custom_css(theme_mode)
 
         st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-title">🚨 Alert Settings</div>', unsafe_allow_html=True)
-        alert_threshold = st.number_input("Gap Threshold ($)", min_value=0.0, value=5.0, step=0.5)
-        st.caption("Highlight dashboard when Arbitrage Gap exceeds this value.")
+        st.markdown('<div class="sidebar-title">🚀 Market Selection</div>', unsafe_allow_html=True)
+        product_id = st.selectbox("Asset", options=CRYPTO_PAIRS, label_visibility="collapsed")
+        view_mode = st.radio("View", options=["Comparison", "Coinbase Only", "Binance Only"], horizontal=True)
+        
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-title">📊 Pro Analytics</div>', unsafe_allow_html=True)
+        target_qty = st.number_input("Analysis Size (BTC/ETH)", min_value=0.01, value=1.0, step=0.1)
+        alert_threshold = st.number_input("Arb Alert Threshold ($)", min_value=0.0, value=5.0, step=0.5)
+
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        status = st.session_state.get("status", {})
+        c_status, b_status = st.columns(2)
+        with c_status:
+            st.markdown('<div class="exchange-label label-coinbase">Coinbase</div>', unsafe_allow_html=True)
+            st.markdown(render_status_badge(status.get("coinbase", "connecting")), unsafe_allow_html=True)
+        with b_status:
+            st.markdown('<div class="exchange-label label-binance">Binance</div>', unsafe_allow_html=True)
+            st.markdown(render_status_badge(status.get("binance", "connecting")), unsafe_allow_html=True)
 
     start_engine(product_id)
     cb_book = st.session_state.get("cb_book")
     bn_book = st.session_state.get("bn_book")
 
-    st.markdown(f'<div class="hero-header"><div class="hero-title">📊 Liquidity Engine Level 3</div><div style="color:#64748b; font-weight:700; font-family:JetBrains Mono">{product_id} Analytics & Alerts</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="hero-header"><div class="hero-title">🚀 Liquidity Engine Level 4</div><div style="color:white; opacity:0.8; font-weight:600; font-family:JetBrains Mono">{product_id} Pro Analytics & Theme Flow</div></div>', unsafe_allow_html=True)
 
     if not cb_book or not bn_book or not (cb_book.is_initialized or bn_book.is_initialized):
         st.warning("Synchronizing feeds...")
@@ -456,6 +486,25 @@ def main():
                 chart_values = [float(d['arb_gap']) for d in hist_data]
                 st.line_chart(chart_values)
 
+        # PRO ANALYTICS (VWAP & IMBALANCE)
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="book-title">💎 Level 4: Execution Analysis (Size: {target_qty} {product_id.split("-")[0]})</div>', unsafe_allow_html=True)
+        
+        v1, v2, v3 = st.columns(3)
+        cb_buy_v = cb_book.calculate_vwap("buy", target_qty)
+        bn_buy_v = bn_book.calculate_vwap("buy", target_qty)
+        cb_imb = cb_book.get_liquidity_imbalance(20) or 0
+        bn_imb = bn_book.get_liquidity_imbalance(20) or 0
+
+        with v1:
+            best_buy = min(v or 1e9 for v in [cb_buy_v, bn_buy_v])
+            source = "Coinbase" if cb_buy_v == best_buy else "Binance"
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Best Execution (Buy)</div><div class="metric-value metric-accent">${best_buy:,.2f}</div><div class="sidebar-info">{source}</div></div>', unsafe_allow_html=True)
+        with v2:
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Coinbase Imbalance</div><div class="metric-value">{"Sell Side" if cb_imb < 0 else "Buy Side"}</div><div class="sidebar-info">{cb_imb:+.2f}</div></div>', unsafe_allow_html=True)
+        with v3:
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Binance Imbalance</div><div class="metric-value">{"Sell Side" if bn_imb < 0 else "Buy Side"}</div><div class="sidebar-info">{bn_imb:+.2f}</div></div>', unsafe_allow_html=True)
+
         # Comparative Books
         c1, c2 = st.columns(2)
         with c1:
@@ -478,7 +527,13 @@ def main():
         m1, m2, m3 = st.columns(3)
         with m1: st.metric(f"{source} Best Bid", f"${active_book.get_best_bid():,.2f}")
         with m2: st.metric(f"{source} Best Ask", f"${active_book.get_best_ask():,.2f}")
-        with m3: st.metric(f"{source} Spread", f"${active_book.get_spread():,.2f}")
+        with m3: st.metric(f"{source} Mid Price", f"${active_book.get_mid_price():,.2f}")
+
+        v1, v2 = st.columns(2)
+        exec_price = active_book.calculate_vwap("buy", target_qty)
+        imbalance = active_book.get_liquidity_imbalance(20) or 0
+        with v1: st.metric(f"Execution Price ({target_qty} qty)", f"${exec_price:,.2f}" if exec_price else "No Liq")
+        with v2: st.metric("Market Imbalance", f"{imbalance:+.2f}", delta="Buy Side" if imbalance > 0 else "Sell Side")
         
         col_b, col_a = st.columns(2)
         with col_b: st.markdown(f'<div class="book-container"><div class="book-title book-title-bid">Bids</div>' + render_book_table(active_book, "bid", 20) + '</div>', unsafe_allow_html=True)

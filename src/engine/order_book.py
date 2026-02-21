@@ -167,6 +167,47 @@ class OrderBook:
             return None
         return round((best_ask + best_bid) / 2, 2)
 
+    def calculate_vwap(self, side: str, target_qty: float) -> Optional[float]:
+        """
+        Calculate the Volume Weighted Average Price (VWAP) for a target quantity.
+        Determines the effective price for buying or selling a specific size.
+        """
+        levels = self.get_top_asks(100) if side == "buy" else self.get_top_bids(100)
+        if not levels:
+            return None
+
+        total_cost = 0.0
+        remaining_qty = target_qty
+
+        for price, qty in levels:
+            fill_qty = min(qty, remaining_qty)
+            total_cost += fill_qty * price
+            remaining_qty -= fill_qty
+
+            if remaining_qty <= 0:
+                return total_cost / target_qty
+
+        return None  # Insufficient liquidity
+
+    def get_liquidity_imbalance(self, depth: int = 10) -> Optional[float]:
+        """
+        Calculate the liquidity imbalance ratio for the top N levels.
+        (Bid_Vol - Ask_Vol) / (Bid_Vol + Ask_Vol)
+        Returns a value between -1.0 and 1.0.
+        """
+        bids = self.get_top_bids(depth)
+        asks = self.get_top_asks(depth)
+        if not bids or not asks:
+            return None
+
+        bid_vol = sum(q for _, q in bids)
+        ask_vol = sum(q for _, q in asks)
+        
+        if (bid_vol + ask_vol) == 0:
+            return 0.0
+            
+        return (bid_vol - ask_vol) / (bid_vol + ask_vol)
+
     def update_sequence(self, seq: int) -> bool:
         """
         Update the sequence number. Returns True if sequence is valid
