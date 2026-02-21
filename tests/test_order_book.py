@@ -59,6 +59,18 @@ class TestApplySnapshot:
         assert book.bid_count == 0
         assert book.ask_count == 1
 
+    def test_apply_binance_partial(self, book):
+        bids = [["100.00", "1.5"], ["99.50", "2.0"]]
+        asks = [["100.50", "3.0"], ["101.00", "4.0"]]
+        
+        book.apply_binance_partial(bids, asks)
+        
+        assert book.bid_count == 2
+        assert book.ask_count == 2
+        assert book.bids["100.00"] == 1.5
+        assert book.asks["101.00"] == 4.0
+        assert book.is_initialized is True
+
 
 # ---------------------------------------------------------------------------
 # Update Tests

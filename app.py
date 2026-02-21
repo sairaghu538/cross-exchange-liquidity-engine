@@ -1,10 +1,11 @@
 """
-Cross-Exchange Liquidity Engine — Level 1
-Real-time Coinbase Order Book Dashboard with Multi-Pair Support
+Cross-Exchange Liquidity Engine — Level 2
+Real-time Coinbase + Binance Order Book Dashboard
 
 Architecture:
-  Background thread → asyncio event loop → WebSocket + Queue + Processor → OrderBook
-  Streamlit UI → reads OrderBook state → displays top 10 bids/asks, spread, mid price
+  Background thread → asyncio event loop → WebSocket feeds (Coinbase/Binance) 
+  → Queue → Event Processor → OrderBooks (per exchange)
+  Streamlit UI → reads OrderBook states → Comparative Analytics
 """
 
 import asyncio
@@ -18,6 +19,7 @@ from streamlit_autorefresh import st_autorefresh
 
 from src.engine.order_book import OrderBook
 from src.feed.coinbase_feed import connect_and_stream
+from src.feed.binance_feed import connect_and_stream_binance
 from src.processor.event_processor import process_events
 
 # ---------------------------------------------------------------------------
@@ -30,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Available Trading Pairs (Coinbase Advanced Trade)
+# Available Trading Pairs
 # ---------------------------------------------------------------------------
 CRYPTO_PAIRS = [
     "BTC-USD",
@@ -108,85 +110,58 @@ st.markdown("""
         border-top: 1px solid rgba(99, 102, 241, 0.15);
         margin: 1rem 0;
     }
-    .sidebar-info {
-        font-size: 0.72rem;
-        color: #475569;
-        line-height: 1.5;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    .sidebar-label {
-        font-size: 0.7rem;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-weight: 600;
-        margin-bottom: 2px;
-    }
-    .sidebar-value {
-        font-size: 0.9rem;
-        color: #e2e8f0;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 500;
-    }
 
     /* ── Hero Header ── */
     .hero-header {
         text-align: center;
-        padding: 1.5rem 0 1rem 0;
+        padding: 1rem 0 0.5rem 0;
     }
     .hero-title {
         font-size: 2.2rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+        background: linear-gradient(135deg, #60a5fa, #f472b6);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        letter-spacing: -0.5px;
+        letter-spacing: -1px;
         margin-bottom: 0.2rem;
     }
-    .hero-subtitle {
-        font-size: 0.95rem;
-        color: #64748b;
-        letter-spacing: 2px;
+
+    /* ── Exchange Labels ── */
+    .exchange-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 1px;
         text-transform: uppercase;
-        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        display: inline-block;
     }
+    .label-coinbase { background: #1652f0; color: white; }
+    .label-binance { background: #f3ba2f; color: black; }
 
     /* ── Status Badge ── */
     .status-badge {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 16px;
+        gap: 6px;
+        padding: 4px 12px;
         border-radius: 50px;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         font-weight: 600;
         font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.5px;
     }
-    .status-connected {
-        background: rgba(16, 185, 129, 0.12);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #10b981;
-    }
-    .status-disconnected {
-        background: rgba(239, 68, 68, 0.12);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        color: #ef4444;
-    }
-    .status-connecting {
-        background: rgba(251, 191, 36, 0.12);
-        border: 1px solid rgba(251, 191, 36, 0.3);
-        color: #fbbf24;
-    }
+    .status-connected { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .status-disconnected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    
     .status-dot {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
         border-radius: 50%;
         animation: pulse 2s infinite;
     }
     .dot-green { background: #10b981; }
     .dot-red { background: #ef4444; }
-    .dot-yellow { background: #fbbf24; }
 
     @keyframes pulse {
         0%, 100% { opacity: 1; transform: scale(1); }
@@ -197,139 +172,83 @@ st.markdown("""
     .metric-card {
         background: rgba(15, 23, 42, 0.6);
         border: 1px solid rgba(99, 102, 241, 0.15);
-        border-radius: 16px;
-        padding: 1.2rem 1.5rem;
+        border-radius: 12px;
+        padding: 1rem;
         backdrop-filter: blur(10px);
-        transition: all 0.3s ease;
-    }
-    .metric-card:hover {
-        border-color: rgba(99, 102, 241, 0.4);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
+        margin-bottom: 10px;
     }
     .metric-label {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: #64748b;
         text-transform: uppercase;
-        letter-spacing: 1.5px;
+        letter-spacing: 1px;
         font-weight: 600;
         margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.6rem;
+        font-size: 1.4rem;
         font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
         color: #e2e8f0;
     }
-    .metric-value-green { color: #10b981; }
-    .metric-value-blue { color: #60a5fa; }
-    .metric-value-purple { color: #a78bfa; }
+    .metric-value-tiny { font-size: 1.1rem; }
+    .metric-best { color: #f472b6; border-color: #f472b6; }
 
     /* ── Order Book Table ── */
     .book-container {
-        background: rgba(15, 23, 42, 0.5);
+        background: rgba(15, 23, 42, 0.4);
         border: 1px solid rgba(99, 102, 241, 0.1);
-        border-radius: 16px;
-        padding: 1.2rem;
-        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        padding: 0.8rem;
+        backdrop-filter: blur(5px);
     }
     .book-title {
-        font-size: 1rem;
+        font-size: 0.85rem;
         font-weight: 700;
-        letter-spacing: 1px;
         text-transform: uppercase;
-        margin-bottom: 0.8rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+        margin-bottom: 0.5rem;
     }
     .book-title-bid { color: #10b981; }
     .book-title-ask { color: #ef4444; }
 
     table.book-table {
         width: 100%;
-        border-collapse: separate;
-        border-spacing: 0 4px;
+        border-collapse: collapse;
         font-family: 'JetBrains Mono', monospace;
     }
     table.book-table th {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         color: #475569;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 600;
-        padding: 8px 12px;
         text-align: right;
+        padding: 4px 8px;
     }
     table.book-table th:first-child { text-align: left; }
     table.book-table td {
-        padding: 8px 12px;
-        font-size: 0.85rem;
-        font-weight: 500;
+        padding: 4px 8px;
+        font-size: 0.8rem;
         text-align: right;
+        border-bottom: 1px solid rgba(255,255,255,0.02);
     }
     table.book-table td:first-child { text-align: left; }
 
-    /* Bid rows */
-    .bid-row td {
-        background: rgba(16, 185, 129, 0.06);
-        color: #10b981;
-    }
-    .bid-row td:first-child {
-        border-radius: 8px 0 0 8px;
-    }
-    .bid-row td:last-child {
-        border-radius: 0 8px 8px 0;
-    }
-    .bid-row:hover td {
-        background: rgba(16, 185, 129, 0.12);
-    }
-
-    /* Ask rows */
-    .ask-row td {
-        background: rgba(239, 68, 68, 0.06);
-        color: #ef4444;
-    }
-    .ask-row td:first-child {
-        border-radius: 8px 0 0 8px;
-    }
-    .ask-row td:last-child {
-        border-radius: 0 8px 8px 0;
-    }
-    .ask-row:hover td {
-        background: rgba(239, 68, 68, 0.12);
-    }
-
-    /* ── Depth Bar ── */
+    /* Bid/Ask highlighting */
+    .bid-row td { color: #10b981; }
+    .ask-row td { color: #ef4444; }
+    
     .depth-bar {
-        height: 4px;
-        border-radius: 2px;
-        margin-top: 4px;
-        transition: width 0.3s ease;
+        height: 2px;
+        border-radius: 1px;
+        margin-top: 2px;
     }
-    .depth-bar-bid { background: linear-gradient(90deg, transparent, #10b981); }
-    .depth-bar-ask { background: linear-gradient(90deg, #ef4444, transparent); }
+    .depth-bar-bid { background: #10b981; opacity: 0.3; }
+    .depth-bar-ask { background: #ef4444; opacity: 0.3; }
 
-    /* ── Footer ── */
-    .footer-text {
-        text-align: center;
-        color: #334155;
-        font-size: 0.7rem;
-        padding: 1rem 0;
-        letter-spacing: 1px;
-    }
+    /* Comparisons */
+    .arb-positive { background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; color: #10b981; }
+    .arb-negative { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #ef4444; }
 
-    /* ── Hide Streamlit defaults ── */
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
-    header { visibility: hidden; }
-
-    /* ── Streamlit metric overrides ── */
-    [data-testid="stMetric"] {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(99, 102, 241, 0.15);
-        border-radius: 16px;
-        padding: 1rem 1.2rem;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -339,54 +258,49 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 
 def _run_async_engine(
-    order_book: OrderBook,
+    order_books: dict[str, OrderBook],
     status_holder: dict,
     product_id: str,
     shutdown_event: threading.Event,
 ):
-    """Run the async WebSocket + processor in a dedicated thread."""
+    """Run multi-exchange feeds and processor."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     queue = asyncio.Queue(maxsize=10000)
     async_shutdown = asyncio.Event()
 
-    def on_status_change(status: str):
-        status_holder["status"] = status
+    def on_status_change(status: str, exchange: str):
+        status_holder[exchange] = status
 
     async def watch_shutdown():
-        """Bridge threading.Event → asyncio.Event."""
         while not shutdown_event.is_set():
             await asyncio.sleep(0.5)
         async_shutdown.set()
 
     async def engine():
         watcher = asyncio.create_task(watch_shutdown())
-        feed_task = asyncio.create_task(
-            connect_and_stream(
-                queue,
-                product_id=product_id,
-                shutdown_event=async_shutdown,
-            )
+        
+        # Coinbase Feed
+        cb_task = asyncio.create_task(
+            connect_and_stream(queue, product_id, async_shutdown)
         )
-        processor_task = asyncio.create_task(
-            process_events(
-                queue,
-                order_book,
-                on_status_change=on_status_change,
-                shutdown_event=async_shutdown,
-            )
+        
+        # Binance Feed
+        bn_task = asyncio.create_task(
+            connect_and_stream_binance(queue, product_id, async_shutdown)
+        )
+        
+        # Unified Processor
+        proc_task = asyncio.create_task(
+            process_events(queue, order_books, on_status_change, async_shutdown)
         )
 
-        # Wait until shutdown is signaled
         await watcher
-        feed_task.cancel()
-        processor_task.cancel()
-
-        try:
-            await asyncio.gather(feed_task, processor_task, return_exceptions=True)
-        except Exception:
-            pass
+        cb_task.cancel()
+        bn_task.cancel()
+        proc_task.cancel()
+        await asyncio.gather(cb_task, bn_task, proc_task, return_exceptions=True)
 
     try:
         loop.run_until_complete(engine())
@@ -394,352 +308,160 @@ def _run_async_engine(
         logger.error(f"Engine thread error: {e}")
     finally:
         loop.close()
-        logger.info(f"Engine thread for {product_id} stopped.")
 
 
-def start_engine(product_id: str = "BTC-USD"):
-    """Initialize and start the background engine. Restarts if pair changed."""
-    current_pair = st.session_state.get("product_id", None)
-
-    # If same pair is already running, do nothing
-    if current_pair == product_id and "order_book" in st.session_state:
+def start_engine(product_id: str):
+    """Initialize dual feeds for Coinbase and Binance."""
+    current_pair = st.session_state.get("product_id")
+    if current_pair == product_id and "cb_book" in st.session_state:
         return
 
-    # If different pair, stop old engine first
-    if current_pair and current_pair != product_id:
+    if current_pair:
         _stop_engine()
 
-    order_book = OrderBook(product_id=product_id)
-    status_holder = {"status": "connecting"}
+    cb_book = OrderBook(product_id=product_id, exchange="coinbase")
+    bn_book = OrderBook(product_id=product_id, exchange="binance")
+    status_holder = {"coinbase": "connecting", "binance": "connecting"}
     shutdown_event = threading.Event()
 
-    st.session_state["order_book"] = order_book
+    st.session_state["cb_book"] = cb_book
+    st.session_state["bn_book"] = bn_book
     st.session_state["status"] = status_holder
     st.session_state["product_id"] = product_id
     st.session_state["shutdown_event"] = shutdown_event
 
     thread = threading.Thread(
         target=_run_async_engine,
-        args=(order_book, status_holder, product_id, shutdown_event),
+        args=({"coinbase": cb_book, "binance": bn_book}, status_holder, product_id, shutdown_event),
         daemon=True,
     )
     thread.start()
     st.session_state["engine_thread"] = thread
-    logger.info(f"Engine started for {product_id}")
 
 
 def _stop_engine():
-    """Signal the background engine to stop."""
     shutdown_event = st.session_state.get("shutdown_event")
     if shutdown_event:
         shutdown_event.set()
-        logger.info("Shutdown signal sent to engine.")
-
-    # Wait briefly for thread to finish
     thread = st.session_state.get("engine_thread")
-    if thread and thread.is_alive():
-        thread.join(timeout=3)
-
-    # Clear old state
-    for key in ["order_book", "status", "product_id", "shutdown_event", "engine_thread"]:
+    if thread:
+        thread.join(timeout=2)
+    for key in ["cb_book", "bn_book", "status", "product_id", "shutdown_event", "engine_thread"]:
         st.session_state.pop(key, None)
 
 
 # ---------------------------------------------------------------------------
-# UI Rendering Helpers
+# UI Helpers
 # ---------------------------------------------------------------------------
 
 def render_status_badge(status: str) -> str:
-    """Return HTML for the connection status badge."""
-    if status == "connected":
-        return (
-            '<span class="status-badge status-connected">'
-            '<span class="status-dot dot-green"></span>CONNECTED</span>'
-        )
-    elif status == "disconnected":
-        return (
-            '<span class="status-badge status-disconnected">'
-            '<span class="status-dot dot-red"></span>DISCONNECTED</span>'
-        )
-    else:
-        return (
-            '<span class="status-badge status-connecting">'
-            '<span class="status-dot dot-yellow"></span>CONNECTING</span>'
-        )
+    color = "green" if status == "connected" else "red"
+    label = "CONNECTED" if status == "connected" else status.upper()
+    return f'<span class="status-badge status-{status}"><span class="status-dot dot-{color}"></span>{label}</span>'
 
 
-def render_order_table(levels: list[tuple[float, float]], side: str, max_qty: float) -> str:
-    """Render an HTML table for bid or ask levels with depth bars."""
+def render_book_table(book: OrderBook, side: str, n: int = 10):
+    levels = book.get_top_bids(n) if side == "bid" else book.get_top_asks(n)
+    if not levels: return "No data"
+    
+    max_qty = max(q for _, q in levels) if levels else 1
     row_class = "bid-row" if side == "bid" else "ask-row"
     bar_class = "depth-bar-bid" if side == "bid" else "depth-bar-ask"
-
+    
     rows = ""
-    for i, (price, qty) in enumerate(levels):
-        pct = (qty / max_qty * 100) if max_qty > 0 else 0
-        depth_bar = f'<div class="depth-bar {bar_class}" style="width: {pct}%"></div>'
-        rows += f"""
-        <tr class="{row_class}">
-            <td>{i + 1}</td>
-            <td>${price:,.2f}</td>
-            <td>{qty:.6f}</td>
-            <td>{depth_bar}</td>
-        </tr>"""
-
-    return f"""
-    <table class="book-table">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Price</th>
-                <th>Quantity</th>
-                <th>Depth</th>
-            </tr>
-        </thead>
-        <tbody>{rows}</tbody>
-    </table>"""
+    for i, (p, q) in enumerate(levels):
+        pct = (q / max_qty * 100)
+        depth = f'<div class="depth-bar {bar_class}" style="width: {pct}%"></div>'
+        rows += f'<tr class="{row_class}"><td>${p:,.2f}</td><td>{q:.4f}</td><td>{depth}</td></tr>'
+        
+    return f'<table class="book-table"><thead><tr><th>Price</th><th>Qty</th><th>Depth</th></tr></thead><tbody>{rows}</tbody></table>'
 
 
 # ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
-
-def render_sidebar() -> str:
-    """Render sidebar with trading pair selector. Returns selected product_id."""
-    with st.sidebar:
-        st.markdown(
-            '<div class="sidebar-title">⚙️ Configuration</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Trading pair dropdown
-        selected_pair = st.selectbox(
-            "Trading Pair",
-            options=CRYPTO_PAIRS,
-            index=CRYPTO_PAIRS.index(
-                st.session_state.get("product_id", "BTC-USD")
-            ) if st.session_state.get("product_id", "BTC-USD") in CRYPTO_PAIRS else 0,
-            key="pair_selector",
-            help="Select a cryptocurrency pair to stream the order book for.",
-        )
-
-        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-
-        # Connection info
-        status_holder = st.session_state.get("status", {})
-        status = status_holder.get("status", "connecting")
-        order_book = st.session_state.get("order_book")
-
-        st.markdown(
-            '<div class="sidebar-label">Connection</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<div class="sidebar-value">{"🟢" if status == "connected" else "🔴" if status == "disconnected" else "🟡"} '
-            f'{status.upper()}</div>',
-            unsafe_allow_html=True,
-        )
-
-        if order_book and order_book.is_initialized:
-            st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-
-            st.markdown(
-                '<div class="sidebar-label">Book Depth</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f'<div class="sidebar-value">{order_book.bid_count:,} bids / '
-                f'{order_book.ask_count:,} asks</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                '<div class="sidebar-label" style="margin-top: 0.5rem">Sequence</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f'<div class="sidebar-value">#{order_book.sequence_num:,}</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-
-        st.markdown(
-            '<div class="sidebar-info">'
-            '📡 Coinbase Advanced Trade<br>'
-            '🔓 No API key required<br>'
-            '🔄 Auto-refresh: 1.5s<br>'
-            '📊 Channel: level2'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-    return selected_pair
-
-
-# ---------------------------------------------------------------------------
-# Main UI
+# Sidebar & Main
 # ---------------------------------------------------------------------------
 
 def main():
-    # Auto-refresh every 1.5 seconds
-    st_autorefresh(interval=1500, limit=None, key="refresh")
+    st_autorefresh(interval=1500, key="refresh")
 
-    # Sidebar — pair selector
-    selected_pair = render_sidebar()
+    with st.sidebar:
+        st.markdown('<div class="sidebar-title">⚙️ Control Panel</div>', unsafe_allow_html=True)
+        product_id = st.selectbox("Market Asset", options=CRYPTO_PAIRS)
+        view_mode = st.radio("Display Mode", options=["Comparison", "Coinbase Only", "Binance Only"])
+        
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        status = st.session_state.get("status", {})
+        
+        st.markdown('<div class="exchange-label label-coinbase">Coinbase</div>', unsafe_allow_html=True)
+        st.markdown(render_status_badge(status.get("coinbase", "connecting")), unsafe_allow_html=True)
+        
+        st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="exchange-label label-binance">Binance</div>', unsafe_allow_html=True)
+        st.markdown(render_status_badge(status.get("binance", "connecting")), unsafe_allow_html=True)
 
-    # Start or switch engine based on selection
-    start_engine(selected_pair)
+    start_engine(product_id)
+    cb_book = st.session_state.get("cb_book")
+    bn_book = st.session_state.get("bn_book")
 
-    # Get state
-    order_book: OrderBook = st.session_state.get("order_book")
-    status_holder = st.session_state.get("status", {})
-    status = status_holder.get("status", "connecting")
-    product_id = st.session_state.get("product_id", selected_pair)
+    st.markdown(f'<div class="hero-header"><div class="hero-title">📊 Liquidity Engine Level 2</div><div style="color:#64748b; font-weight:700; font-family:JetBrains Mono">{product_id} Multi-Exchange Comparison</div></div>', unsafe_allow_html=True)
 
-    # ── Header ──
-    st.markdown("""
-    <div class="hero-header">
-        <div class="hero-title">📊 Liquidity Engine</div>
-        <div class="hero-subtitle">Real-Time Order Book Analytics</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── Status + Product Badge ──
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-    with col_center:
-        badge_html = render_status_badge(status)
-        st.markdown(
-            f'<div style="text-align:center; margin-bottom: 1rem;">'
-            f'{badge_html}'
-            f'<span style="margin-left: 12px; color: #94a3b8; font-family: JetBrains Mono; '
-            f'font-size: 0.85rem; font-weight: 600;">{product_id}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-    if not order_book or not order_book.is_initialized:
-        st.markdown(
-            f'<div style="text-align:center; color:#64748b; padding: 3rem; font-size: 1.1rem;">'
-            f'⏳ Waiting for order book snapshot for <strong style="color:#a78bfa">'
-            f'{product_id}</strong> from Coinbase...</div>',
-            unsafe_allow_html=True,
-        )
+    if not cb_book or not bn_book or not (cb_book.is_initialized or bn_book.is_initialized):
+        st.warning("Synchronizing feeds...")
         return
 
-    # ── Metrics Row ──
-    spread = order_book.get_spread()
-    mid_price = order_book.get_mid_price()
-    best_bid = order_book.get_best_bid()
-    best_ask = order_book.get_best_ask()
-    last_time = order_book.last_update_time or "—"
+    # COMPARISON LOGIC
+    best_cb_bid = cb_book.get_best_bid() or 0
+    best_cb_ask = cb_book.get_best_ask() or 1e9
+    best_bn_bid = bn_book.get_best_bid() or 0
+    best_bn_ask = bn_book.get_best_ask() or 1e9
+    
+    global_best_bid = max(best_cb_bid, best_bn_bid)
+    global_best_ask = min(best_cb_ask, best_bn_ask)
+    bid_source = "Coinbase" if best_cb_bid >= best_bn_bid else "Binance"
+    ask_source = "Coinbase" if best_cb_ask <= best_bn_ask else "Binance"
 
-    # Format timestamp
-    if last_time and last_time != "—":
-        try:
-            dt = datetime.fromisoformat(last_time.replace("Z", "+00:00"))
-            last_time = dt.strftime("%H:%M:%S.%f")[:-3]
-        except (ValueError, AttributeError):
-            pass
+    # MAIN VIEW
+    if view_mode == "Comparison":
+        # Global Metrics
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Global Best Bid</div><div class="metric-value metric-best">${global_best_bid:,.2f}</div><div class="sidebar-info">{bid_source}</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Global Best Ask</div><div class="metric-value metric-best">${global_best_ask:,.2f}</div><div class="sidebar-info">{ask_source}</div></div>', unsafe_allow_html=True)
+        with m3:
+            spread = global_best_ask - global_best_bid
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Unified Spread</div><div class="metric-value">${spread:,.2f}</div></div>', unsafe_allow_html=True)
+        with m4:
+            arb = best_bn_bid - best_cb_ask # Buy CB, Sell BN
+            st.markdown(f'<div class="metric-card"><div class="metric-label">Arbitrage Gap</div><div class="metric-value {"arb-positive" if arb > 0 else ""}">${arb:,.2f}</div></div>', unsafe_allow_html=True)
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+        # Comparative Books
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="exchange-label label-coinbase">Coinbase Liquidity</div>', unsafe_allow_html=True)
+            sc1, sc2 = st.columns(2)
+            with sc1: st.markdown('<div class="book-container"><div class="book-title book-title-bid">Bids</div>' + render_book_table(cb_book, "bid") + '</div>', unsafe_allow_html=True)
+            with sc2: st.markdown('<div class="book-container"><div class="book-title book-title-ask">Asks</div>' + render_book_table(cb_book, "ask") + '</div>', unsafe_allow_html=True)
+        
+        with c2:
+            st.markdown('<div class="exchange-label label-binance">Binance Liquidity</div>', unsafe_allow_html=True)
+            sb1, sb2 = st.columns(2)
+            with sb1: st.markdown('<div class="book-container"><div class="book-title book-title-bid">Bids</div>' + render_book_table(bn_book, "bid") + '</div>', unsafe_allow_html=True)
+            with sb2: st.markdown('<div class="book-container"><div class="book-title book-title-ask">Asks</div>' + render_book_table(bn_book, "ask") + '</div>', unsafe_allow_html=True)
 
-    with m1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Best Bid</div>
-            <div class="metric-value metric-value-green">${best_bid:,.2f}</div>
-        </div>""", unsafe_allow_html=True)
-
-    with m2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Best Ask</div>
-            <div class="metric-value" style="color: #ef4444;">${best_ask:,.2f}</div>
-        </div>""", unsafe_allow_html=True)
-
-    with m3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Spread</div>
-            <div class="metric-value metric-value-blue">${spread:,.2f}</div>
-        </div>""", unsafe_allow_html=True)
-
-    with m4:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Mid Price</div>
-            <div class="metric-value metric-value-purple">${mid_price:,.2f}</div>
-        </div>""", unsafe_allow_html=True)
-
-    with m5:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Last Update</div>
-            <div class="metric-value" style="font-size: 1.1rem; color: #94a3b8;">{last_time}</div>
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown("<div style='height: 1.2rem'></div>", unsafe_allow_html=True)
-
-    # ── Order Book Tables ──
-    top_bids = order_book.get_top_bids(10)
-    top_asks = order_book.get_top_asks(10)
-
-    # Find max quantity for depth bar scaling
-    all_qtys = [q for _, q in top_bids] + [q for _, q in top_asks]
-    max_qty = max(all_qtys) if all_qtys else 1
-
-    col_bid, col_spacer, col_ask = st.columns([5, 0.3, 5])
-
-    with col_bid:
-        st.markdown("""
-        <div class="book-container">
-            <div class="book-title book-title-bid">🟢 Top 10 Bids (Buy Orders)</div>
-        """, unsafe_allow_html=True)
-        st.markdown(render_order_table(top_bids, "bid", max_qty), unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with col_ask:
-        st.markdown("""
-        <div class="book-container">
-            <div class="book-title book-title-ask">🔴 Top 10 Asks (Sell Orders)</div>
-        """, unsafe_allow_html=True)
-        st.markdown(render_order_table(top_asks, "ask", max_qty), unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Book Stats ──
-    st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
-
-    s1, s2, s3 = st.columns(3)
-    with s1:
-        st.markdown(f"""
-        <div class="metric-card" style="text-align:center;">
-            <div class="metric-label">Total Bid Levels</div>
-            <div class="metric-value" style="font-size:1.3rem; color:#10b981;">
-                {order_book.bid_count:,}
-            </div>
-        </div>""", unsafe_allow_html=True)
-    with s2:
-        st.markdown(f"""
-        <div class="metric-card" style="text-align:center;">
-            <div class="metric-label">Total Ask Levels</div>
-            <div class="metric-value" style="font-size:1.3rem; color:#ef4444;">
-                {order_book.ask_count:,}
-            </div>
-        </div>""", unsafe_allow_html=True)
-    with s3:
-        st.markdown(f"""
-        <div class="metric-card" style="text-align:center;">
-            <div class="metric-label">Sequence #</div>
-            <div class="metric-value" style="font-size:1.3rem; color:#a78bfa;">
-                {order_book.sequence_num:,}
-            </div>
-        </div>""", unsafe_allow_html=True)
-
-    # ── Footer ──
-    st.markdown(
-        '<div class="footer-text">CROSS-EXCHANGE LIQUIDITY ENGINE • LEVEL 1 • COINBASE L2 FEED</div>',
-        unsafe_allow_html=True,
-    )
+    else:
+        # Single Exchange View
+        active_book = cb_book if "Coinbase" in view_mode else bn_book
+        source = "COINBASE" if active_book == cb_book else "BINANCE"
+        
+        m1, m2, m3 = st.columns(3)
+        with m1: st.metric(f"{source} Best Bid", f"${active_book.get_best_bid():,.2f}")
+        with m2: st.metric(f"{source} Best Ask", f"${active_book.get_best_ask():,.2f}")
+        with m3: st.metric(f"{source} Spread", f"${active_book.get_spread():,.2f}")
+        
+        col_b, col_a = st.columns(2)
+        with col_b: st.markdown(f'<div class="book-container"><div class="book-title book-title-bid">Bids</div>' + render_book_table(active_book, "bid", 20) + '</div>', unsafe_allow_html=True)
+        with col_a: st.markdown(f'<div class="book-container"><div class="book-title book-title-ask">Asks</div>' + render_book_table(active_book, "ask", 20) + '</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

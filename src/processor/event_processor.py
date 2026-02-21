@@ -17,19 +17,13 @@ logger = logging.getLogger(__name__)
 
 async def process_events(
     queue: asyncio.Queue,
-    order_book: OrderBook,
-    on_status_change: Optional[Callable[[str], None]] = None,
+    order_books: dict[str, OrderBook],  # exchange -> OrderBook
+    on_status_change: Optional[Callable[[str, str], None]] = None,  # (status, exchange)
     shutdown_event: Optional[asyncio.Event] = None,
 ) -> None:
     """
     Continuously consume events from the queue and apply them
-    to the order book.
-
-    Args:
-        queue: asyncio.Queue with parsed events from the feed.
-        order_book: OrderBook instance to update.
-        on_status_change: Optional callback for connection status changes.
-        shutdown_event: Optional event to signal graceful shutdown.
+    to the appropriate order book.
     """
     while True:
         if shutdown_event and shutdown_event.is_set():
@@ -37,25 +31,31 @@ async def process_events(
             break
 
         try:
-            # Wait for next event with timeout to check shutdown
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
             event_type = event.get("type", "")
+            exchange = event.get("exchange", "coinbase")
+            order_book = order_books.get(exchange)
 
             if event_type == "connection_status":
                 status = event.get("status", "unknown")
-                logger.info(f"Connection status: {status}")
+                logger.info(f"[{exchange}] Connection status: {status}")
                 if on_status_change:
-                    on_status_change(status)
+                    on_status_change(status, exchange)
+                continue
+
+            if not order_book:
                 continue
 
             if event_type == "snapshot":
                 _handle_snapshot(event, order_book)
             elif event_type == "update":
                 _handle_update(event, order_book)
+            elif event_type == "binance_partial":
+                _handle_binance_partial(event, order_book)
 
             queue.task_done()
 
@@ -69,7 +69,7 @@ def _handle_snapshot(event: dict, order_book: OrderBook) -> None:
     seq = event.get("sequence_num", 0)
 
     logger.info(
-        f"Received snapshot for {event.get('product_id', '?')} "
+        f"[{order_book.exchange}] Received snapshot for {event.get('product_id', '?')} "
         f"with {len(updates)} levels (seq={seq})"
     )
 
@@ -78,7 +78,7 @@ def _handle_snapshot(event: dict, order_book: OrderBook) -> None:
     order_book.last_update_time = event.get("timestamp", "")
 
     logger.info(
-        f"Order book initialized: {order_book.bid_count} bids, "
+        f"[{order_book.exchange}] Order book initialized: {order_book.bid_count} bids, "
         f"{order_book.ask_count} asks, spread={order_book.get_spread()}"
     )
 
@@ -86,7 +86,6 @@ def _handle_snapshot(event: dict, order_book: OrderBook) -> None:
 def _handle_update(event: dict, order_book: OrderBook) -> None:
     """Process an incremental update event."""
     if not order_book.is_initialized:
-        logger.warning("Received update before snapshot, ignoring.")
         return
 
     updates = event.get("updates", [])
@@ -97,9 +96,20 @@ def _handle_update(event: dict, order_book: OrderBook) -> None:
     seq_ok = order_book.update_sequence(seq)
     if not seq_ok:
         logger.warning(
-            f"Sequence gap detected! Expected {prev_seq + 1}, "
+            f"[{order_book.exchange}] Sequence gap detected! Expected {prev_seq + 1}, "
             f"got {seq}. Data may be stale."
         )
 
     order_book.apply_update(updates)
     order_book.last_update_time = event.get("timestamp", "")
+
+
+def _handle_binance_partial(event: dict, order_book: OrderBook) -> None:
+    """Process a Binance partial book update."""
+    bids = event.get("bids", [])
+    asks = event.get("asks", [])
+    
+    order_book.apply_binance_partial(bids, asks)
+    # Binance partial events don't usually need sequence tracking in the same way 
+    # as Coinbase since each message is a full reset of the top levels.
+    order_book.sequence_num = event.get("last_update_id", 0)

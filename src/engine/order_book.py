@@ -9,20 +9,33 @@ writes from the feed thread don't cause RuntimeError during iteration.
 """
 
 import threading
+from datetime import datetime
 from typing import Optional
 
 
 class OrderBook:
     """Maintains a real-time order book from snapshot + incremental updates."""
 
-    def __init__(self, product_id: str = "BTC-USD"):
+    def __init__(self, product_id: str = "BTC-USD", exchange: str = "coinbase"):
         self.product_id = product_id
+        self.exchange = exchange
         self._lock = threading.Lock()
         self._bids: dict[str, float] = {}  # price_level -> quantity
         self._asks: dict[str, float] = {}  # price_level -> quantity
         self.last_update_time: Optional[str] = None
         self.sequence_num: int = -1
         self.is_initialized: bool = False
+
+    def apply_binance_partial(self, bids: list[list[str]], asks: list[list[str]]) -> None:
+        """
+        Apply a partial book update (Binance format).
+        Replaces the entire book with the provided bids and asks.
+        """
+        with self._lock:
+            self._bids = {p: float(q) for p, q in bids if float(q) > 0}
+            self._asks = {p: float(q) for p, q in asks if float(q) > 0}
+            self.is_initialized = True
+            self.last_update_time = datetime.now().isoformat() + "Z"
 
     # -- Public read-only aliases (snapshot copies for thread safety) --
 

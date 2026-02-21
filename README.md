@@ -10,44 +10,30 @@ Real-time order book reconstruction and cross-exchange liquidity analytics engin
 ### Full Depth View & Statistics
 ![Dashboard Bottom](assets/dashboard_bottom.png)
 
-## Level 1 — Coinbase Order Book (Current)
+## Level 2 — Multi-Exchange Comparison (Current)
 
-Real-time order book reconstruction from the Coinbase Advanced Trade Level 2 WebSocket feed with **multi-pair support**.
+The engine now streams real-time data from both **Coinbase** and **Binance** simultaneously to provide a unified view of market liquidity.
 
-### Features
+### New Features
 
-- **20 crypto pairs** — Switch instantly between BTC-USD, ETH-USD, SOL-USD, and 17 more via sidebar dropdown
-- **Live order book reconstruction** — Snapshot + incremental updates from Coinbase
-- **Top 10 bids/asks** — Sorted and displayed in real-time
-- **Market metrics** — Spread, mid price, best bid/ask
-- **Depth visualization** — Quantity depth bars per price level
-- **Thread-safe engine** — Lock-protected OrderBook for concurrent UI/feed access
-- **Auto-reconnect** — Exponential backoff on disconnection
-- **Sequence tracking** — Gap detection for data integrity
-- **Premium dark UI** — Glassmorphism cards, gradient theme, JetBrains Mono
+- **Binance Integration** — Seamless connection to Binance Spot WebSocket API.
+- **Global Best Price** — Aggregated best bid and best ask across both exchanges.
+- **Arbitrage Tracking** — Automatic calculation of price gaps between exchanges.
+- **Side-by-Side Visualization** — Compare depth and spread across platforms in real-time.
+- **Automatic Symbol Mapping** — Handles exchange-specific naming conventions (e.g., BTC-USD vs btcusdt).
 
-### Supported Trading Pairs
-
-| Pair | Pair | Pair | Pair |
-|------|------|------|------|
-| BTC-USD | ETH-USD | SOL-USD | XRP-USD |
-| DOGE-USD | ADA-USD | AVAX-USD | DOT-USD |
-| LINK-USD | MATIC-USD | UNI-USD | SHIB-USD |
-| LTC-USD | NEAR-USD | ATOM-USD | ARB-USD |
-| OP-USD | APT-USD | FIL-USD | PEPE-USD |
-
-### Architecture
+### Architecture (Level 2)
 
 ```
-Coinbase WebSocket (wss://advanced-trade-ws.coinbase.com)
-        ↓
-  Async Producer Task → asyncio.Queue
-        ↓
-  Event Processor (snapshot/update routing)
-        ↓
-  OrderBook Engine (thread-safe bids/asks)
-        ↓
-  Streamlit Dashboard (sidebar pair selector + auto-refresh 1.5s)
+[Coinbase feed]  [Binance feed]
+       \            /
+     [asyncio.Queue]
+            |
+    [Event Processor]
+       /            \
+[Coinbase Book]  [Binance Book]
+       \            /
+    [Comparative UI]
 ```
 
 ### Quick Start
